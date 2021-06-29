@@ -1,6 +1,6 @@
 # LedStripController
-A PlatformIO firmware project providing LED Strip effects via an ASCII protocol
-over serial interface.
+A PlatformIO firmware project providing RGB LED Strip effects via an ASCII
+protocol over serial interface.
 
 
 # Hardware Requirements
