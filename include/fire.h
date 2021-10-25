@@ -96,9 +96,9 @@ class FireEffect
         {
             CRGB color = HeatColor(heat[i]);
             int j = bReversed ? (Size - 1 - i) : i;
-            DrawFanPixels(j, 1, color, order);
+            DrawPixels(j, 1, color);//, order);
             if (bMirrored)
-                DrawFanPixels(!bReversed ? (2 * Size - 1 - i) : Size + i, 1, color, order);
+                DrawPixels(!bReversed ? (2 * Size - 1 - i) : Size + i, 1, color);//, order);
         }
     }
 };

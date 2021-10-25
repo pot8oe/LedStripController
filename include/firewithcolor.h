@@ -68,6 +68,21 @@
 #define FASTLED_INTERNAL
 #include <FastLED.h>
 
+/* *
+ * Fire Color Pallets
+ * */
+typedef enum AvailableFireColorPallets
+{
+    Heat = 0x0,
+    Party,
+    Rainbow,
+    RainboxStripe,
+    Forest,
+    Ocean,
+    Lava,
+    Cloud
+} FireColorPallets_t;
+
 class FireWithColor
 {
 
@@ -81,9 +96,9 @@ private:
 
 public:
 
-    FireWithColor(int size) :
+    FireWithColor(int size, CRGBPalette16 pallet = CRGBPalette16(HeatColors_p)) :
         Size(size),
-        gPal(HeatColors_p)
+        gPal(pallet)
     {
         // This first palette is the basic 'black body radiation' colors,
         // which run from black to red to bright yellow to white.
@@ -106,6 +121,52 @@ public:
     virtual ~FireWithColor()
     {
         delete [] heat;
+    }
+
+    void SetPallet(CRGBPalette16 pallet)
+    {
+        gPal = pallet;
+    }
+
+    void SetPallet(FireColorPallets_t pallet)
+    {
+        switch(pallet)
+        {
+
+        case AvailableFireColorPallets::Party:
+            this->SetPallet(PartyColors_p);
+            break;
+
+        case AvailableFireColorPallets::Rainbow:
+            this->SetPallet(RainbowColors_p);
+            break;
+
+        case AvailableFireColorPallets::RainboxStripe:
+            this->SetPallet(RainbowStripeColors_p);
+            break;
+
+        case AvailableFireColorPallets::Forest:
+            this->SetPallet(ForestColors_p);
+            break;
+
+        case AvailableFireColorPallets::Ocean:
+            this->SetPallet(OceanColors_p);
+            break;
+
+        case AvailableFireColorPallets::Lava:
+            this->SetPallet(LavaColors_p);
+            break;
+
+        case AvailableFireColorPallets::Cloud:
+            this->SetPallet(CloudColors_p);
+            break;
+
+        default:
+        case AvailableFireColorPallets::Heat:
+            this->SetPallet(HeatColors_p);
+            break;
+
+        }
     }
 
     void DrawFire()

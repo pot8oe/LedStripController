@@ -20,6 +20,7 @@
 #include <Arduino.h>            // Arduino Framework
 #define FASTLED_INTERNAL        // Suppress FastLED build banner
 #include <FastLED.h>            // FastLED Library
+#include <EEPROM.h>             // EEPROM library
 #include "ledgfx.h"             // LED "Graphics" helpers from DavePL
 #include "bounce.h"             // Boouncing call effect
 #include "comet.h"              // Comet effect
@@ -46,9 +47,6 @@ const char* VERSION_CODE = "LEDSC_TEENSY_001";
 #define MAX_BRIGHTNESS              255                     // Max brightness value
 #define MIN_BRIGHTNESS              0                       // Min brightness value
 #define MAX_INPUT_BUFFER_LEN        MAX_PROTO_PACKET_LEN    // Input buffer max length
-
-
-
 
 
 
@@ -106,6 +104,30 @@ const char* VERSION_CODE = "LEDSC_TEENSY_001";
  * */
 #define CMD_SET_BRIGHTNESS              "CSB\0"
 
+/* *
+ * Command Set Fire Color Pallet - Sets the active color pallet for FIRE_COLOR effect
+ * params
+ * - Pallet code in HEX:
+ *      0x00 - Heat
+ *      0x01 - Party
+ *      0x02 - Rainbow
+ *      0x03 - RainbowStripe
+ *      0x04 - Forest
+ *      0x05 - Ocean
+ *      0x06 - Lava
+ *      0x07 - Cloud
+ * */
+#define CMD_SET_FIRE_COLOR_PALLET       "CSFP\0"
+
+
+/* *
+ * EEPROM Address locations for saved settings. Currently leaving extra space in the event a value
+ * increases in size in the future.
+ * */
+uint8_t ADDRESS_BRIGHTNESS = 0x0000;            // EEPROM address for brightnes 8bit value.
+uint16_t ADDRESS_EFFECT = 0x0002;               // EEPROM address for effect code value
+uint32_t ADDRESS_COLOR_RGB = 0x0004;            // EEPROM address for color value
+uint16_t ADDRESS_FIRE_COLOR_PALLET = 0x0008;    // EEPROM address for fire color pallet value
 
 /* *
  * LED Strip effects
@@ -126,7 +148,6 @@ typedef enum AvailableEffects
 } Effect_t;
 
 
-
 CRGB leds[NUM_LEDS] = {0};                                  // Frame buffer for FastLED
 CRGB color(175,91,7);                                       // Base color for effects that require an input color
 uint8_t brightness = 0x44;                                  // 0-255 LED brightness
@@ -138,6 +159,7 @@ Comet comet(hue);                                           // Comet effect obje
 FireEffect fire(NUM_LEDS, 15, 100, 15, 4, true, true);      // Fire effect object
 FireWithColor fireColor(NUM_LEDS);                          // Fire with color object
 Effect_t active_effect = AvailableEffects::OFF;             // Active LED Strip effect
+FireColorPallets_t fireColorPallet = AvailableFireColorPallets::Heat;   // Current fire color pallet
 bool debugging = false;                                     // Enable debugging output
 uint16_t cib_len=0;                                         // Current input buffer length
 char ich = 0;                                               // Current input buffer character index
@@ -208,6 +230,7 @@ void proc_set_active_effect(proto_pkt_t* pkt_received, proto_pkt_t* pkt_response
 
         if(effectin >= 0 && effectin < AvailableEffects::MAX_EFFECT) {
             active_effect = (AvailableEffects)effectin;
+            EEPROM.put(ADDRESS_EFFECT, (uint16_t)effectin);
         }
     }
 
@@ -232,6 +255,7 @@ void proc_set_color(proto_pkt_t* pkt_received, proto_pkt_t* pkt_response) {
     if(pkt_received->param_count > 0) {
         uint32_t colorin = strtol(pkt_received->params[0], NULL, 16);
         color.setColorCode(colorin);
+        EEPROM.put(ADDRESS_COLOR_RGB, colorin);
     }
 
 
@@ -255,6 +279,29 @@ void proc_set_brightness(proto_pkt_t* pkt_received, proto_pkt_t* pkt_response) {
     if(pkt_received->param_count > 0) {
         brightness = strtol(pkt_received->params[0], NULL, 16);
         FastLED.setBrightness(brightness);
+        EEPROM.put(ADDRESS_BRIGHTNESS, brightness);
+    }
+
+    proto_print_response_pkt(pkt_response);
+}
+
+/**
+ * @brief proc_set_fire_color_pallet
+ * @param pkt
+ */
+void proc_set_fire_color_pallet(proto_pkt_t* pkt_received, proto_pkt_t* pkt_response) {
+
+    proto_init_response_pkt(pkt_response, pkt_received);
+
+    if(pkt_received->param_count <= 0) {
+        proto_set_response_pkt_error_code(pkt_response, ERR_PROTO_CP_MISSING_PARAMS);
+        proto_print_response_pkt(pkt_response);
+        return;
+    }
+
+    if(pkt_received->param_count > 0) {
+        fireColorPallet = (FireColorPallets_t)strtol(pkt_received->params[0], NULL, 16);
+        EEPROM.put(ADDRESS_FIRE_COLOR_PALLET, (uint16_t)fireColorPallet);
     }
 
     proto_print_response_pkt(pkt_response);
@@ -324,6 +371,8 @@ void proc_cmd(proto_pkt_t* pkt_received, proto_pkt_t* pkt_response) {
         proc_set_color(pkt_received, pkt_response);
     } else if(strcmp(pkt_received->cmd, CMD_SET_BRIGHTNESS) == 0) {
         proc_set_brightness(pkt_received, pkt_response);
+    } else if(strcmp(pkt_received->cmd, CMD_SET_FIRE_COLOR_PALLET) == 0) {
+        proc_set_fire_color_pallet(pkt_received, pkt_response);
     } else {
         proc_print_error(pkt_received, pkt_response, ERR_PROTO_CP_CMD_UNKNOWN);
     }
@@ -337,13 +386,32 @@ void proc_cmd(proto_pkt_t* pkt_received, proto_pkt_t* pkt_response) {
  */
 void setup()
 {
-  Serial.begin(115200);
-  Serial.println("Teensy Startup");
+    // Setup serial
+    Serial.begin(115200);
+    Serial.println("Teensy Startup");
 
-  FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, NUM_LEDS);               // Add our LED strip to the FastLED library
+    // Setup FastLED
+    FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, NUM_LEDS);               // Add our LED strip to the FastLED library
+    FastLED.setMaxPowerInVoltsAndMilliamps(5, 10000);
 
-  FastLED.setBrightness(brightness);
-  FastLED.setMaxPowerInVoltsAndMilliamps(5, 10000);
+    // Read EEPROM stored parameters
+    EEPROM.get(ADDRESS_BRIGHTNESS, brightness);
+
+    uint16_t effectin = 0x0;
+    EEPROM.get(ADDRESS_EFFECT, effectin);
+
+    uint32_t colorin = 0x0;
+    EEPROM.get(ADDRESS_COLOR_RGB, colorin);
+
+    uint16_t fireColorPalletin = 0x0;
+    EEPROM.get(ADDRESS_FIRE_COLOR_PALLET, fireColorPalletin);
+
+    // Restore
+    FastLED.setBrightness(brightness);
+    active_effect = (AvailableEffects)effectin;
+    color.setColorCode(colorin);
+    fireColorPallet = (AvailableFireColorPallets)fireColorPalletin;
+
 }
 
 /**
@@ -351,7 +419,6 @@ void setup()
  */
 void loop()
 {
-
     while(true) {
 
         //read any pending input and process if a full cmd has been read into buffer
@@ -376,7 +443,6 @@ void loop()
                     hue += 1;
                     for(int i=0; i<NUM_LEDS; i++) {
                         leds[i].setHue(hue);
-                        //FastLED.show();
                     }
                     FastLED.show();
                 }
@@ -413,6 +479,7 @@ void loop()
                 EVERY_N_MILLISECONDS(10)
                 {
                     FastLED.clear();
+                    fireColor.SetPallet(fireColorPallet);
                     fireColor.DrawFire();
                     FastLED.show();
                 }
