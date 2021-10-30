@@ -119,6 +119,11 @@ const char* VERSION_CODE = "LEDSC_TEENSY_001";
  * */
 #define CMD_SET_FIRE_COLOR_PALLET       "CSFP\0"
 
+/* *
+ * Command Get Status - Gets the status of the LED Strip parameters
+ * */
+#define CMD_GET_STATUS                  "CGS\0"
+
 
 /* *
  * EEPROM Address locations for saved settings. Currently leaving extra space in the event a value
@@ -308,6 +313,29 @@ void proc_set_fire_color_pallet(proto_pkt_t* pkt_received, proto_pkt_t* pkt_resp
 }
 
 /**
+ * @brief proc_get_status processes the get status command.
+ * @param pkt_received
+ * @param pkt_response
+ */
+void proc_get_status(proto_pkt_t* pkt_received, proto_pkt_t* pkt_response) {
+
+    char buff[MAX_PROTO_PARAM_LEN];
+
+    sprintf(buff,
+            "%02X|%02X|%02X|%02X%02X%02X|%02X",
+            debugging,
+            (uint16_t)active_effect,
+            brightness,
+            color.r, color.g, color.b,
+            (uint16_t)fireColorPallet);
+
+    proto_init_response_pkt(pkt_response, pkt_received);
+    proto_append_response_pkt_param(pkt_response, buff);
+    proto_set_response_pkt_error_code(pkt_response, ERR_PROTO_SUCCESS);
+    proto_print_response_pkt(pkt_response);
+}
+
+/**
  * @brief proc_input Processes incoming serial data and writes it to pkt_receive
  * @return Packet length when end of packet detected. 0 When packet has been cleared due to no data.
  */
@@ -373,7 +401,9 @@ void proc_cmd(proto_pkt_t* pkt_received, proto_pkt_t* pkt_response) {
         proc_set_brightness(pkt_received, pkt_response);
     } else if(strcmp(pkt_received->cmd, CMD_SET_FIRE_COLOR_PALLET) == 0) {
         proc_set_fire_color_pallet(pkt_received, pkt_response);
-    } else {
+    } else if(strcmp(pkt_received->cmd, CMD_GET_STATUS) == 0) {
+        proc_get_status(pkt_received, pkt_response);
+    }else {
         proc_print_error(pkt_received, pkt_response, ERR_PROTO_CP_CMD_UNKNOWN);
     }
 
